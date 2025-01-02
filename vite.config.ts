@@ -18,8 +18,8 @@ export default defineConfig({
               plugins: [{
                 name: 'copy-native-module',
                 closeBundle() {
-                  const srcPath = path.join(__dirname, 'electron/smp-addon-lib')
-                  const destPath = path.join(__dirname, 'dist-electron/smp-addon-lib')
+                  const srcPath = path.join(__dirname, 'electron/c')
+                  const destPath = path.join(__dirname, 'dist-electron/c')
                   fs.copySync(srcPath, destPath)
                 }
               }]

@@ -1,9 +1,8 @@
 import { app, BrowserWindow } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import {test} from './addon'
-test();
-
+import { NdiHandler } from './addon'
+import fs from 'fs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // The built directory structure
@@ -24,14 +23,49 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
-let win: BrowserWindow | null
+// 在创建窗口之前添加命令行开关
+app.commandLine.appendSwitch('enable-unsafe-swiftshader')
+app.commandLine.appendSwitch('ignore-gpu-blocklist')
+app.commandLine.appendSwitch('enable-gpu-rasterization')
 
+let win: BrowserWindow | null
+let ndiHandler: NdiHandler | null = new NdiHandler('')
+
+// 设置视频数据接收回调
+ndiHandler.on('video', (width: number, height: number, data_buffer: any, data_size: number) => {
+  if (!win?.webContents) return;
+  
+  try {
+    if (!data_buffer || data_size !== width * height * 4) {
+      console.error('Invalid data buffer received');
+      return;
+    }
+
+    const receiveTime = performance.now();
+    // 检查 data_buffer 的类型并正确创建 Uint8Array
+
+    win.webContents.send('ndi-video-frame', {
+      width,
+      height,
+      data:Buffer.from(data_buffer),
+      receiveTime
+    });
+
+    // 确保原始缓冲区可以被垃圾回收
+    data_buffer = null;
+  } catch (e) {
+    console.error('Error sending frame:', e)
+  }
+})
 
 function createWindow() {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webgl: true,
     },
   })
 
@@ -46,6 +80,10 @@ function createWindow() {
     // win.loadFile('dist/index.html')
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+
+  // 启动 NDI
+  const ndiSourceName = 'ZC-DEVELOP (VLC)' 
+  ndiHandler?.start(ndiSourceName)
 }
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -55,6 +93,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
     win = null
+    ndiHandler = null // 清理 NDI Handler
   }
 })
 
